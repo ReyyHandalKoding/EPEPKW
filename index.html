@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Chaos FPS ULTRA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<style>
+body{margin:0;overflow:hidden;background:#000;font-family:monospace}
+#hud{position:fixed;top:10px;left:10px;color:#0f0}
+#cross{position:fixed;left:50%;top:50%;width:12px;height:12px;margin:-6px;border:2px solid #fff}
+#mini{position:fixed;right:10px;bottom:10px;width:120px;height:120px;border:1px solid #555}
+#msg{position:fixed;bottom:10px;left:10px;color:#aaa}
+</style>
+</head>
+<body>
+<div id="hud">HP <b id="hp">100</b> | Ammo <b id="am">15</b> | Gun <b id="gun">Pistol</b></div>
+<div id="cross"></div>
+<canvas id="mini"></canvas>
+<div id="msg">Click lock • WASD • Click shoot • 1/2 switch • P pause</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152/build/three.min.js"></script>
+<script>
+/* ===== SETUP ===== */
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x0e0e0e);
+const cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1000);
+const ren=new THREE.WebGLRenderer({antialias:true});
+ren.setSize(innerWidth,innerHeight); document.body.appendChild(ren.domElement);
+const light=new THREE.DirectionalLight(0xffffff,1); light.position.set(5,10,5); scene.add(light);
+
+/* ===== MAP (WALLS) ===== */
+const walls=[];
+function wall(x,z,w,h){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(w,3,h),
+  new THREE.MeshStandardMaterial({color:0x444444}));
+ m.position.set(x,1.5,z); scene.add(m); walls.push(m);
+}
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(80,80),
+ new THREE.MeshStandardMaterial({color:0x2a2a2a}));
+floor.rotation.x=-Math.PI/2; scene.add(floor);
+wall(0,-20,40,2); wall(-20,0,2,40); wall(20,0,2,40); wall(0,20,40,2);
+wall(0,0,10,2); wall(0,0,2,10);
+
+/* ===== PLAYER ===== */
+let yaw=0,pitch=0,paused=false;
+cam.position.set(0,1.6,10);
+let hp=100; const hpEl=document.getElementById('hp');
+document.body.onclick=()=>document.body.requestPointerLock();
+addEventListener('mousemove',e=>{
+ if(document.pointerLockElement&&!paused){
+  yaw-=e.movementX*0.002; pitch-=e.movementY*0.002;
+  pitch=Math.max(-1.4,Math.min(1.4,pitch));
+ }
+});
+let keys={}; addEventListener('keydown',e=>{
+ keys[e.key.toLowerCase()]=true;
+ if(e.key.toLowerCase()==='p') paused=!paused;
+ if(e.key==='1') setGun(0);
+ if(e.key==='2') setGun(1);
+});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+/* ===== GUNS ===== */
+const guns=[
+ {name:'Pistol',max:15,rate:300,recoil:.02, dmg:20},
+ {name:'AR',max:30,rate:100,recoil:.04, dmg:10}
+];
+let gi=0, ammo=guns[0].max, lastShot=0;
+const amEl=document.getElementById('am'), gunEl=document.getElementById('gun');
+function setGun(i){gi=i; ammo=guns[i].max; amEl.textContent=ammo; gunEl.textContent=guns[i].name}
+amEl.textContent=ammo;
+
+/* ===== ENEMIES ===== */
+function enemy(x,z){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(1,2,1),
+  new THREE.MeshStandardMaterial({color:0xff3333}));
+ m.position.set(x,1,z); scene.add(m);
+ return {m,hp:60,cd:0};
+}
+let enemies=[enemy(-10,-10),enemy(10,-10),enemy(0,-15)];
+
+/* ===== PROJECTILES ===== */
+const bullets=[];
+function shoot(from,dir,spd,owner){
+ const b=new THREE.Mesh(new THREE.SphereGeometry(.1),
+  new THREE.MeshBasicMaterial({color: owner==='p'?0xffff00:0xff0000}));
+ b.position.copy(from); scene.add(b);
+ bullets.push({m:b,dir,spd,owner,life:2});
+}
+
+/* ===== SHOOT INPUT ===== */
+const sShoot = new Audio("https://cdn.jsdelivr.net/gh/jshawl/AudioFX/laser1.mp3");
+sShoot.volume = 0.5;
+const ray=new THREE.Raycaster();
+addEventListener('mousedown',()=>{
+  if(paused) return;
+  if(reloading) return;
+  if(ammo <= 0) return;
+
+  sShoot.currentTime = 0;
+  sShoot.play();
+
+  pitch -= guns[gi].recoil;
+
+  ammo--;
+  amEl.textContent = ammo;
+
+});
+
+/* ===== UTILS ===== */
+const tmpV=new THREE.Vector3();
+function collide(pos){
+ const box=new THREE.Box3().setFromCenterAndSize(pos,new THREE.Vector3(.5,2,.5));
+ return walls.some(w=>box.intersectsBox(new THREE.Box3().setFromObject(w)));
+}
+
+/* ===== MINIMAP ===== */
+const mini=document.getElementById('mini'),mx=mini.getContext('2d');
+mini.width=120; mini.height=120;
+
+/* ===== LOOP ===== */
+function loop(){
+ requestAnimationFrame(loop);
+ if(paused){ ren.render(scene,cam); return; }
+
+ cam.rotation.order="YXZ"; cam.rotation.y=yaw; cam.rotation.x=pitch;
+
+ // move + collision
+ cam.getWorldDirection(tmpV); tmpV.y=0; tmpV.normalize();
+ const right=new THREE.Vector3().crossVectors(tmpV,cam.up);
+ let next=cam.position.clone();
+ if(keys.w) next.addScaledVector(tmpV,.15);
+ if(keys.s) next.addScaledVector(tmpV,-.15);
+ if(keys.a) next.addScaledVector(right,.15);
+ if(keys.d) next.addScaledVector(right,-.15);
+ if(!collide(next)) cam.position.copy(next);
+
+ // enemy AI shoot
+ enemies.forEach(e=>{
+  if(e.hp<=0) return;
+  const v=cam.position.clone().sub(e.m.position); const d=v.length();
+  if(d<18){
+   v.normalize(); e.m.lookAt(cam.position);
+   e.cd-=1/60;
+   if(e.cd<=0){ shoot(e.m.position.clone(),v.clone(),20,'e'); e.cd=1; }
+  }
+ });
+
+ // bullets
+ bullets.forEach(b=>{
+  b.m.position.addScaledVector(b.dir, b.spd*0.016); b.life-=0.016;
+  if(b.owner==='e' && b.m.position.distanceTo(cam.position)<.6){
+   hp-=10; hpEl.textContent=hp; b.life=0;
+   if(hp<=0){ alert('YOU DIED'); location.reload(); }
+  }
+  enemies.forEach(e=>{
+   if(b.owner==='p' && e.hp>0 && b.m.position.distanceTo(e.m.position)<.7){
+    e.hp-=guns[gi].dmg; b.life=0; e.m.material.color.set(0x990000);
+   }
+  });
+ });
+ for(let i=bullets.length-1;i>=0;i--) if(bullets[i].life<=0){ scene.remove(bullets[i].m); bullets.splice(i,1); }
+
+ // minimap
+ mx.clearRect(0,0,120,120);
+ mx.strokeStyle='#555'; mx.strokeRect(0,0,120,120);
+ mx.fillStyle='#0f0'; mx.fillRect(60+cam.position.x,60+cam.position.z,3,3);
+ mx.fillStyle='#f00'; enemies.forEach(e=>mx.fillRect(60+e.m.position.x,60+e.m.position.z,3,3));
+
+ ren.render(scene,cam);
+}
+loop();
+onresize=()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight)};
+</script>
+</body>
+</html>
