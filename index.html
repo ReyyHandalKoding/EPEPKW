@@ -91,7 +91,9 @@ function shoot(from,dir,spd,owner){
 const sShoot = new Audio("https://cdn.jsdelivr.net/gh/jshawl/AudioFX/laser1.mp3");
 sShoot.volume = 0.5;
 const ray=new THREE.Raycaster();
-addEventListener('mousedown',()=>{
+addEventListener('mousedown', ()=>{
+  console.log("KLIK NEMBAK");
+ {(;
   if(paused) return;
   if(reloading) return;
   if(ammo <= 0) return;
