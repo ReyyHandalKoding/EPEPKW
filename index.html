@@ -92,8 +92,10 @@ const sShoot = new Audio("https://cdn.jsdelivr.net/gh/jshawl/AudioFX/laser1.mp3"
 sShoot.volume = 0.5;
 const ray=new THREE.Raycaster();
 addEventListener('mousedown', ()=>{
-  console.log("KLIK NEMBAK");
- {(;
+window.addEventListener('mousedown', (e)=>{
+  console.log("TEMBAK");
+
+  if(e.button !== 0) return; // klik kiri aja
   if(paused) return;
   if(reloading) return;
   if(ammo <= 0) return;
@@ -101,11 +103,11 @@ addEventListener('mousedown', ()=>{
   sShoot.currentTime = 0;
   sShoot.play();
 
-  pitch -= guns[gi].recoil;
+  cam.getWorldDirection(tmpV);
+  shoot(cam.position.clone(), tmpV.clone(), 30, 'p');
 
   ammo--;
   amEl.textContent = ammo;
-
 });
 
 /* ===== UTILS ===== */
